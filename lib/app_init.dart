@@ -10,6 +10,7 @@ import 'package:book/main.dart';
 import 'package:book/route/routes.dart';
 import 'package:book/service/firebase_bootstrap.dart';
 import 'package:book/service/tel_and_sms_service.dart';
+import 'package:book/source/builtin_sources.dart';
 import 'package:fluro/fluro.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -102,6 +103,9 @@ class AppInit {
     await ReaderFontBootstrap.ensure();
     // Single-file reader.db — drop legacy multi-DB files (no migration).
     await ReaderDatabase.wipeLegacyDatabases();
+    // 安装内置书源（幂等：已存在则跳过，不覆盖用户改动）。
+    // 放在数据库清理之后、界面渲染之前，保证首次搜索即可用。
+    await BuiltinSources.ensureInstalled();
     // Drop pre-reader.db SpUtil page-layout keys (`*pages*`).
     for (final key in SpUtil.getKeys().toList()) {
       if (key.contains('pages')) {
