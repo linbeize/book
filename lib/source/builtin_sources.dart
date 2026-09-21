@@ -32,9 +32,20 @@ class BuiltinSources {
     "weight": 0,
     "header": "",
     "searchUrl": "/api/search?kw={{key}}&size=30&p={{page}}",
-    "exploreUrl": "",
+    "exploreUrl": "热门榜单::/api/rank\n玄幻魔法::/api/books?cate=1&ot=1\n武侠修真::/api/books?cate=2&ot=1\n都市言情::/api/books?cate=3&ot=1\n历史军事::/api/books?cate=4&ot=1\n侦探推理::/api/books?cate=5&ot=1\n网游动漫::/api/books?cate=6&ot=1\n科幻灵异::/api/books?cate=7&ot=1\n高干总裁::/api/books?cate=11&ot=1\n其他类型::/api/books?cate=13&ot=1\n最近更新::/api/books?ot=2\n字数最多::/api/books?ot=3",
     "jsLib": "",
     "ruleSearch": {
+      "bookList": "$.data.list[*]",
+      "name": "$.name",
+      "author": "$.author",
+      "kind": "$.cate_name",
+      "wordCount": "$.text_num",
+      "intro": "",
+      "lastChapter": "$.chapter_title",
+      "coverUrl": "$.cover",
+      "bookUrl": "$.url"
+    },
+    "ruleExplore": {
       "bookList": "$.data.list[*]",
       "name": "$.name",
       "author": "$.author",
@@ -84,27 +95,59 @@ class BuiltinSources {
     try {
       final repo = SourceRepository.instance;
 
+      // 诊断：把关键状态写入日志缓冲（「我的」-「日志」可查看）。
+      // 上线版本无控制台输出，此处是排查书源问题的主要途径。
+      AppLog.i('BuiltinSources', '开始检查内置书源');
+
       final parsed = SourceImporter.parseJson(builtinSourcesJson);
+      AppLog.i('BuiltinSources',
+          '解析结果: ${parsed.count} 个, 跳过 ${parsed.skipped}');
       if (parsed.sources.isEmpty) {
         AppLog.w('BuiltinSources', '内置书源解析为空，跳过');
         return;
       }
 
+      for (final s in parsed.sources) {
+        AppLog.i('BuiltinSources',
+            '候选: ${s.bookSourceName} url=${s.bookSourceUrl} '
+            'searchUrl=${s.searchUrl} enabled=${s.enabled}');
+      }
+
+      final total = await repo.count();
       final toAdd = <BookSource>[];
       for (final s in parsed.sources) {
         final existing = await repo.getByUrl(s.bookSourceUrl);
         if (existing == null) {
           toAdd.add(s);
+        } else {
+          AppLog.i('BuiltinSources', '已存在，跳过: ${s.bookSourceUrl}');
         }
       }
 
       if (toAdd.isEmpty) {
-        AppLog.d('BuiltinSources', '内置书源已存在，无需安装');
+        AppLog.i('BuiltinSources', '内置书源已存在，无需安装（库中共 $total 条）');
         return;
       }
 
       await repo.upsertAll(toAdd);
-      AppLog.i('BuiltinSources', '已安装内置书源 ${toAdd.length} 个');
+
+      // 安装后回读校验：确认规则确实写入了（而非只写了 meta）。
+      for (final s in toAdd) {
+        final back = await repo.getByUrl(s.bookSourceUrl);
+        if (back == null) {
+          AppLog.e('BuiltinSources', '写入后读回失败: ${s.bookSourceUrl}');
+          continue;
+        }
+        AppLog.i('BuiltinSources',
+            '写入成功: ${back.bookSourceName} enabled=${back.enabled} '
+            'searchUrl=${back.searchUrl} '
+            'bookList=${back.ruleSearch.bookList} '
+            'tocList=${back.ruleToc.chapterList} '
+            'content=${back.ruleContent.content}');
+      }
+
+      final after = await repo.count();
+      AppLog.i('BuiltinSources', '已安装内置书源 ${toAdd.length} 个（库中共 $after 条）');
     } catch (e, st) {
       // 内置书源安装失败不应阻断启动——用户仍可手动导入。
       AppLog.e('BuiltinSources', '安装内置书源失败', error: e, stackTrace: st);

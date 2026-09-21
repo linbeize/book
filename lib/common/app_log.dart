@@ -19,7 +19,12 @@ class AppLog {
   static int maxEntries = 500;
 
   /// Also emit to console in release builds (default off).
-  static bool enabledInRelease = false;
+  /// 也向控制台输出（release 构建默认关闭）。
+  ///
+  /// 已开启：内置书源等功能的诊断信息需要能在真机上查看
+  /// （「我的」-「日志」页面读取的是内存缓冲，不受此项影响；
+  ///   此项控制的是是否同时打印到控制台/adb logcat）。
+  static bool enabledInRelease = true;
 
   static final ListQueue<_LogEntry> _buffer = ListQueue<_LogEntry>();
   static final List<void Function(_LogEntry)> _listeners = [];
